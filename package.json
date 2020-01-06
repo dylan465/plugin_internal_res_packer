@@ -1,0 +1,8 @@
+{
+	"name": "internal_res_packer",
+	"version": "0.0.1",
+	"description": "内置资源打包插件",
+	"author": "Zhong Yu",
+	"main": "main.js",
+	"main-menu": {}
+}

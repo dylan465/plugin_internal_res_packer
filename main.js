@@ -6,8 +6,8 @@
 const Path = require('fire-path');
 const Fs = require('fire-fs');
 
-function getMd5ByUuid(buildResults, uuid) {
-	return buildResults._md5Map[uuid] || buildResults._nativeMd5Map[uuid];
+function getMd5ByUuidArray(buildResults, uuid) { // raw资源一个uuid有两个md5，例如mp3资源，这里要使用数组处理
+	return [buildResults._md5Map[uuid], buildResults._nativeMd5Map[uuid]];
 }
 
 function getUuidFromPackedAssets(buildResults, uuid) {
@@ -30,13 +30,20 @@ function makeDir(dir) {
 	}
 }
 
-function getFilePath(buildResults, resDir, uuid, md5) {
+function getFilePathArray(buildResults, resDir, uuid, md5Array) {
 	let asset = buildResults._buildAssets[uuid];
-	let isRawAsset = asset && asset.nativePath;
-	let extension = isRawAsset ? asset.nativePath.split('.').pop() : 'json';
-	let dir = Path.join(resDir, isRawAsset ? 'raw-assets' : 'import', uuid.substr(0, 2));
-	makeDir(dir);
-	return Path.join(dir, `${uuid}.${md5}.${extension}`);
+	let pathArray = [];
+	for (let index = 0; index < md5Array.length; index++) {
+		const md5 = md5Array[index];
+		if (md5) {
+			let isRawAsset = md5 == buildResults._nativeMd5Map[uuid];
+			let extension = isRawAsset ? asset.nativePath.split('.').pop() : 'json';
+			let dir = Path.join(resDir, isRawAsset ? 'raw-assets' : 'import', uuid.substr(0, 2));
+			makeDir(dir);
+			pathArray.push(Path.join(dir, `${uuid}.${md5}.${extension}`));
+		}
+	}
+	return pathArray;
 }
 
 function copyFile(src, dst) {
@@ -47,7 +54,7 @@ function copyFile(src, dst) {
 }
 
 function onBeforeBuildStart(options, callback) {
-	if (options.actualPlatform === 'wechatgame' && !options.debug) {
+	if (options.actualPlatform === 'wechatgame') {
 		Fs.removeSync(Path.join(options.dest, 'res'));
 		Fs.removeSync(Path.join(options.dest, 'res_internal'));
 	}
@@ -64,11 +71,15 @@ function onBuildFinish(options, callback) {
 
 	if (options.actualPlatform === 'wechatgame' && !options.debug && options.md5Cache) {
 		function copyAssetByUuid(uuid) {
-			let md5 = getMd5ByUuid(buildResults, uuid);
-			if (md5) {
-				let src = getFilePath(buildResults, Path.join(options.dest, 'res'), uuid, md5);
-				let dst = getFilePath(buildResults, Path.join(options.dest, 'res_internal'), uuid, md5);
-				copyFile(src, dst);
+			let md5Array = getMd5ByUuidArray(buildResults, uuid);
+			if (md5Array && md5Array.length > 0) {
+				let srcArray = getFilePathArray(buildResults, Path.join(options.dest, 'res'), uuid, md5Array);
+				let dstArray = getFilePathArray(buildResults, Path.join(options.dest, 'res_internal'), uuid, md5Array);
+				for (let index = 0; index < srcArray.length; index++) {
+					const src = srcArray[index];
+					const dst = dstArray[index];
+					copyFile(src, dst);
+				}
 			}
 		}
 
@@ -104,7 +115,10 @@ function onBuildFinish(options, callback) {
 		queryAssets('db://internal/resources/**/*');
 
 		// 打包启动场景资源
-		// 方法1：读路径 queryAssets('db://assets/Scene/LaunchScene.fire');
+
+		// 方法1：读路径 
+		// queryAssets('db://assets/Scene/LaunchScene.fire');
+
 		// 方法2：读配置
 		var startSceneUuid = options.startScene;
 		copyAssets([startSceneUuid]);

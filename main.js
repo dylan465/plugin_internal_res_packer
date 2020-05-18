@@ -38,9 +38,16 @@ function getFilePathArray(buildResults, resDir, uuid, md5Array) {
 		if (md5) {
 			let isRawAsset = md5 == buildResults._nativeMd5Map[uuid];
 			let extension = isRawAsset ? asset.nativePath.split('.').pop() : 'json';
-			let dir = Path.join(resDir, isRawAsset ? 'raw-assets' : 'import', uuid.substr(0, 2));
+			let dir;
+			if (extension.indexOf('ttf') != -1) { // ttf字体文件路径特殊处理
+				dir = Path.join(resDir, 'raw-assets', uuid.substr(0, 2), `${uuid}.${md5}`);
+				extension = asset.nativePath.split('/').pop();
+				pathArray.push(Path.join(dir, extension));
+			} else {
+				dir = Path.join(resDir, isRawAsset ? 'raw-assets' : 'import', uuid.substr(0, 2));
+				pathArray.push(Path.join(dir, `${uuid}.${md5}.${extension}`));
+			}
 			makeDir(dir);
-			pathArray.push(Path.join(dir, `${uuid}.${md5}.${extension}`));
 		}
 	}
 	return pathArray;
@@ -66,10 +73,12 @@ function onBeforeBuildFinish(options, callback) {
 }
 
 function onBuildFinish(options, callback) {
-
+	// Editor.log("options", JSON.stringify(options));
 	let buildResults = options.buildResults;
 
 	if (options.actualPlatform === 'wechatgame' && !options.debug && options.md5Cache) {
+		let uuidSet = new Set(); // 避免互相依赖
+
 		function copyAssetByUuid(uuid) {
 			let md5Array = getMd5ByUuidArray(buildResults, uuid);
 			if (md5Array && md5Array.length > 0) {
@@ -86,10 +95,13 @@ function onBuildFinish(options, callback) {
 		function copyAssets(uuids) {
 			for (let i = 0; i < uuids.length; ++i) {
 				let uuid = uuids[i];
+				if (uuidSet.has(uuid)) continue;
+
 				let asset = buildResults._buildAssets[uuid];
 				if (asset && buildResults.getAssetType(uuid) != 'folder') {
 
 					copyAssetByUuid(uuid);
+					uuidSet.add(uuid);
 
 					// 依赖数据
 					let asset = buildResults._buildAssets[uuid];
@@ -110,10 +122,6 @@ function onBuildFinish(options, callback) {
 				}
 			});
 		}
-
-		// 打包引擎内置的effects和materials
-		queryAssets('db://internal/resources/**/*');
-
 		// 打包启动场景资源
 
 		// 方法1：读路径 
